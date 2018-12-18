@@ -34,7 +34,17 @@
 
 -spec new(t()) -> t_internals().
 new(RawModel) ->
-  {ok, _Digraph} = build_graph(RawModel).
+  case build_graph(RawModel) of
+    {ok, Digraph} ->
+      case check_required_dependencies(RawModel, Digraph) of
+        true ->
+          {ok, RawModel};
+        false ->
+          {error, dependency_tree_model_cannot_be_resolved}
+      end;
+    {error, _Reason} = Error ->
+      Error
+  end.
 
 %%====================================================================
 %% Internal functions
@@ -55,6 +65,17 @@ build_graph(RawModel) ->
     _ ->
       {ok, Digraph}
   end.
+
+-spec check_required_dependencies(RawModel :: t(), digraph:graph()) ->
+  ok | error.
+check_required_dependencies(RawModel, Digraph) ->
+  Sources = digraph:source_vertices(Digraph),
+  FunAll =
+    fun(Elem) ->
+      #{required := Required} = maps:get(Elem, RawModel),
+      check_guarantee_of_existence_dependencies(Elem, Required, RawModel, Digraph)
+    end,
+  lists:all(FunAll, Sources).
 
 %%====================================================================
 %% Helpers
@@ -103,3 +124,19 @@ add_edges(Edges, Digraph) ->
     _ ->
       ok
   end.
+
+-spec check_guarantee_of_existence_dependencies(field_name(), RequiredFlag :: boolean(), t(), digraph:graph()) ->
+  boolean().
+check_guarantee_of_existence_dependencies(Field, RequiredFlag, RawModel, Digraph) ->
+  case RawModel of
+    #{Field := #{required := false}} when RequiredFlag =:= true ->
+      false;
+    #{Field := #{required := Required}} ->
+      Fields = digraph:out_neighbours(Digraph, Field),
+      FunAll =
+        fun(Elem) ->
+          check_guarantee_of_existence_dependencies(Elem, Required, RawModel, Digraph)
+        end,
+      lists:all(FunAll, Fields)
+  end.
+
