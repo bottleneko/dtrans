@@ -1,29 +1,12 @@
 -module(dtrans_model).
 
--type field_name()  :: any().
-
--type field_model(FieldType) :: #{
-  required      => boolean(),
-  validator     => fun((FieldType) -> boolean()),
-  default_value => FieldType,
-  constructor   =>
-    fun(() -> FieldType)
-    | {depends_on, [field_name()], fun((...) -> FieldType)}
-}.
-
--export_type([field_model/1]).
-
--type t() :: #{field_name() => field_model(any())}.
-
--export_type([t/0]).
-
--record(dtrans_model_internals, {
+-record(dtrans_model_record, {
 
 }).
 
--opaque t_internals() :: #dtrans_model_internals{}.
+-opaque t() :: #dtrans_model_record{}.
 
--export_type([t_internals/0]).
+-export_type([t/0]).
 
 %% API
 -export([new/1]).
@@ -32,13 +15,13 @@
 %% API functions
 %%====================================================================
 
--spec new(t()) -> t_internals().
+-spec new(dtrans:model()) -> t().
 new(RawModel) ->
   case build_graph(RawModel) of
     {ok, Digraph} ->
       case check_required_dependencies(RawModel, Digraph) of
         true ->
-          {ok, RawModel};
+          build_dependency_layers(Digraph);
         false ->
           {error, dependency_tree_model_cannot_be_resolved}
       end;
@@ -77,11 +60,16 @@ check_required_dependencies(RawModel, Digraph) ->
     end,
   lists:all(FunAll, Sources).
 
+-spec build_dependency_layers(digraph:graph()) ->
+  [[dtrans:model_field_name()]].
+build_dependency_layers(Digraph) ->
+  build_dependency_layers([], Digraph).
+
 %%====================================================================
 %% Helpers
 %%====================================================================
 
--spec get_links(t()) -> [field_name()].
+-spec get_links(t()) -> [dtrans:field_name()].
 get_links(Model) ->
   Fun =
     fun({Key, Value}) ->
@@ -91,7 +79,7 @@ get_links(Model) ->
   IrregularLinks = lists:map(Fun, maps:to_list(Model)),
   lists:flatten(IrregularLinks).
 
--spec get_depended_fields(field_model(any())) -> [field_name()].
+-spec get_depended_fields(dtrans:field_model(any())) -> [dtrans:field_name()].
 get_depended_fields(FieldModel) ->
   Constructor = maps:get(constructor, FieldModel),
   case Constructor of
@@ -100,7 +88,7 @@ get_depended_fields(FieldModel) ->
     _ -> []
   end.
 
--spec add_vertexes(Vertexes :: [field_name()], digraph:graph()) -> ok.
+-spec add_vertexes(Vertexes :: [dtrans:field_name()], digraph:graph()) -> ok.
 add_vertexes(Vertexes, Digraph) ->
   Fun =
     fun(Elem) ->
@@ -108,8 +96,8 @@ add_vertexes(Vertexes, Digraph) ->
     end,
   lists:foreach(Fun, Vertexes).
 
--spec add_edges(Edges :: [{From :: field_name(), To :: field_name()}], digraph:graph()) ->
- ok | {error, {bad_edge, [field_name()]}}.
+-spec add_edges(Edges :: [{From :: dtrans:field_name(), To :: dtrans:field_name()}], digraph:graph()) ->
+ ok | {error, {bad_edge, [dtrans:field_name()]}}.
 add_edges(Edges, Digraph) ->
   Fun =
     fun
@@ -125,7 +113,11 @@ add_edges(Edges, Digraph) ->
       ok
   end.
 
--spec check_guarantee_of_existence_dependencies(field_name(), RequiredFlag :: boolean(), t(), digraph:graph()) ->
+-spec check_guarantee_of_existence_dependencies(
+    dtrans:field_name(),
+    RequiredFlag :: boolean(),
+    dtrans:model(),
+    digraph:graph()) ->
   boolean().
 check_guarantee_of_existence_dependencies(Field, RequiredFlag, RawModel, Digraph) ->
   case RawModel of
@@ -140,3 +132,16 @@ check_guarantee_of_existence_dependencies(Field, RequiredFlag, RawModel, Digraph
       lists:all(FunAll, Fields)
   end.
 
+build_dependency_layers([] = _Acc, Digraph) ->
+  Layer = digraph:source_vertices(Digraph),
+  build_dependency_layers([Layer], Digraph);
+build_dependency_layers([[] | Tail] = _Acc, _Digraph) ->
+  Tail;
+build_dependency_layers([PreviousLayer | _Tail] = Acc, Digraph) ->
+  Fun =
+    fun(Elem) ->
+      digraph:out_neighbours(Digraph, Elem)
+    end,
+  LayerWithDups = lists:flatmap(Fun, PreviousLayer),
+  Layer = sets:to_list(sets:from_list(LayerWithDups)),
+  build_dependency_layers([Layer | Acc], Digraph).
