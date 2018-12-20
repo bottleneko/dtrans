@@ -35,9 +35,12 @@ new(FieldName, ModelField) ->
     constructor   = maps:get(constructor,   ModelField,  fun(Value) -> Value end)
   }.
 
--spec extract(Data, Base, t()) -> {ok, any()} | {error, no_data}
-  when Base   :: Data,
-       Data   :: #{dtrans:model_field_name() => dtrans:model_field()}.
+-spec extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
+  {ok, any()} | {error, Error}
+  when Error ::
+      {no_data,            dtrans:model_field_name()}
+    | {validation_error,   dtrans:model_field_name(), Reason :: term()}
+    | {construction_error, dtrans:model_field_name(), Reason :: term()}.
 extract(Data, Base, #dtrans_model_field{name = Field, required = true} = FieldModel) ->
   case Data of
     #{Field := Value} ->
@@ -57,6 +60,11 @@ extract(Data, Base, #dtrans_model_field{name = Field, default_value = Default} =
 %% Internal functions
 %%====================================================================
 
+-spec do_extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
+  {ok, any()} | {error, Error}
+  when Error ::
+      {validation_error,   dtrans:model_field_name(), Reason :: term()}
+    | {construction_error, dtrans:model_field_name(), Reason :: term()}.
 do_extract(Value, Base, FieldModel) ->
   case validate(Value, FieldModel) of
     ok ->
@@ -65,8 +73,8 @@ do_extract(Value, Base, FieldModel) ->
       Error
   end.
 
-  -spec validate(Value :: any(), t()) ->
-  ok | {error, Reason :: term()}.
+-spec validate(Value :: any(), t()) ->
+  ok | {error, {validation_error, dtrans:model_field_name(), Reason :: term()}}.
 validate(Value, #dtrans_model_field{name = Field, validator = Validator}) ->
   %% FIXME: check type before return, now possible invalid returns values without errors
   try Validator(Value) of
@@ -78,9 +86,8 @@ validate(Value, #dtrans_model_field{name = Field, validator = Validator}) ->
       {error, {validation_error, Field, Reason}}
   end.
 
--spec construct(Value :: any(), Data, t()) ->
-  {ok, ConstructedValue :: any()} | {error, Reason :: term()}
-  when Data :: #{dtrans:model_field_name() => dtrans:model_field()}.
+-spec construct(Value :: any(), dtrans:data(), t()) ->
+  {ok, ConstructedValue :: any()} | {error, {construction_error, dtrans:model_field_name(), Reason :: term()}}.
 construct(Value, Base, #dtrans_model_field{
   constructor = {depends_on, DependencyFields, Constructor}
 } = FieldModel) ->

@@ -41,8 +41,8 @@ new(RawModel) ->
       Error
   end.
 
--spec extract(Data :: dtrans:model(), Model :: t()) ->
-  #{dtrans:model_field_name() => any()}.
+-spec extract(Data :: dtrans:data(), Model :: t()) ->
+  {ok, dtrans:data()} | {error, Reason :: term()}.
 extract(Data, #dtrans_model_record{model = Model, layers = Layers} = _Model) ->
   Fun =
     fun
@@ -63,8 +63,8 @@ extract(Data, #dtrans_model_record{model = Model, layers = Layers} = _Model) ->
 %% Internal functions
 %%====================================================================
 
--spec build_graph(RawModel :: t()) ->
-  {ok, Digraph :: digraph:graph()} | {error, cyclic_dependency}.
+-spec build_graph(RawModel :: dtrans:model()) ->
+  {ok, digraph:graph()} | {error, {cyclic_dependency, Path :: [dtrans:model_field_name()]}}.
 build_graph(RawModel) ->
   Digraph = digraph:new([acyclic]),
 
@@ -79,8 +79,7 @@ build_graph(RawModel) ->
       {ok, Digraph}
   end.
 
--spec check_required_dependencies(RawModel :: t(), digraph:graph()) ->
-  ok | error.
+-spec check_required_dependencies(dtrans:model(), digraph:graph()) -> boolean().
 check_required_dependencies(RawModel, Digraph) ->
   Sources = digraph:source_vertices(Digraph),
   FunAll =
@@ -99,14 +98,14 @@ build_dependency_layers(Digraph) ->
 %% Helpers
 %%====================================================================
 
--spec get_links(t()) -> [dtrans:field_name()].
-get_links(Model) ->
+-spec get_links(dtrans:model()) -> [dtrans:field_name()].
+get_links(RawModel) ->
   Fun =
     fun({Key, Value}) ->
       Fields = get_depended_fields(Value),
       [{Key, Field} || Field <- Fields]
     end,
-  IrregularLinks = lists:map(Fun, maps:to_list(Model)),
+  IrregularLinks = lists:map(Fun, maps:to_list(RawModel)),
   lists:flatten(IrregularLinks).
 
 -spec get_depended_fields(dtrans:field_model(any())) -> [dtrans:field_name()].
