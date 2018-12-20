@@ -1,0 +1,19 @@
+language: erlang
+otp_release:
+    - 21.2
+    - 21.1
+    - 20.2
+    - 20.1
+    - 19.3
+    - 18.3
+before_script:
+    - pip install --upgrade pip
+script:
+    - curl -O -L https://s3.amazonaws.com/rebar3/rebar3
+    - chmod +x rebar3
+    - ./rebar3 update
+    - "./rebar3 ct"
+install:
+   pip install codecov
+after_success:
+   codecov
