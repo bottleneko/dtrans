@@ -1,6 +1,5 @@
 -module(dtrans_model_field).
 
-%% TODO: store field name in record
 -record(dtrans_model_field, {
   name          :: dtrans:model_field_name(),
   required      :: boolean(),
@@ -32,15 +31,15 @@ new(FieldName, ModelField) ->
     required      = maps:get(required,      ModelField,  false),
     validator     = maps:get(validator,     ModelField,  fun(_Value) -> ok end),
     default_value = maps:get(default_value, ModelField),
-    constructor   = maps:get(constructor,   ModelField,  fun(Value) -> Value end)
+    constructor   = maps:get(constructor,   ModelField,  fun(Value) -> {ok, Value} end)
   }.
 
 -spec extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
   {ok, any()} | {error, Error}
-  when Error ::
-      {no_data,            dtrans:model_field_name()}
-    | {validation_error,   dtrans:model_field_name(), Reason :: term()}
-    | {construction_error, dtrans:model_field_name(), Reason :: term()}.
+  when FieldErrorKind :: validation_error         | construction_error
+                       | validator_invalid_output | constructor_invalid_output,
+       Error :: {no_data,         dtrans:model_field_name()}
+              | {FieldErrorKind, dtrans:model_field_name(), Reason :: term()}.
 extract(Data, Base, #dtrans_model_field{name = Field, required = true} = FieldModel) ->
   case Data of
     #{Field := Value} ->
@@ -62,9 +61,9 @@ extract(Data, Base, #dtrans_model_field{name = Field, default_value = Default} =
 
 -spec do_extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
   {ok, any()} | {error, Error}
-  when Error ::
-      {validation_error,   dtrans:model_field_name(), Reason :: term()}
-    | {construction_error, dtrans:model_field_name(), Reason :: term()}.
+  when Error          :: {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
+       FieldErrorKind :: validation_error         | construction_error
+                       | validator_invalid_output | constructor_invalid_output.
 do_extract(Value, Base, FieldModel) ->
   case validate(Value, FieldModel) of
     ok ->
@@ -74,20 +73,27 @@ do_extract(Value, Base, FieldModel) ->
   end.
 
 -spec validate(Value :: any(), t()) ->
-  ok | {error, {validation_error, dtrans:model_field_name(), Reason :: term()}}.
+  ok | {error, Error}
+  when Error          :: {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
+       FieldErrorKind :: validation_error | validator_invalid_output.
 validate(Value, #dtrans_model_field{name = Field, validator = Validator}) ->
-  %% FIXME: check type before return, now possible invalid returns values without errors
-  try Validator(Value) of
-    ok -> ok;
-    {error, Reason} ->
-      {error, {validation_error, Field, Reason}}
+  try
+    case Validator(Value) of
+      ok -> ok;
+      {error, Error} ->
+        {error, {validation_error, Field, Error}}
+    end
   catch
+    _:{case_clause, Output} ->
+      {error, {validator_invalid_output, Field, Output}};
     _:Reason ->
       {error, {validation_error, Field, Reason}}
   end.
 
 -spec construct(Value :: any(), dtrans:data(), t()) ->
-  {ok, ConstructedValue :: any()} | {error, {construction_error, dtrans:model_field_name(), Reason :: term()}}.
+  {ok, ConstructedValue :: any()} | {error, Error}
+  when Error          :: {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
+       FieldErrorKind :: construction_error | constructor_invalid_output.
 construct(Value, Base, #dtrans_model_field{
   constructor = {depends_on, DependencyFields, Constructor}
 } = FieldModel) ->
@@ -100,8 +106,15 @@ construct(Value, Base, #dtrans_model_field{
   });
 construct(Value, _Base, #dtrans_model_field{name = Field, constructor = Constructor}) ->
   try
-    {ok, Constructor(Value)}
+    case Constructor(Value) of
+      {ok, _Value} = Success ->
+        Success;
+      {error, Error} ->
+        {error, {construction_error, Field, Error}}
+    end
   catch
+    _:{case_clause, Output} ->
+      {error, {constructor_invalid_output, Field, Output}};
     _:Reason ->
       {error, {construction_error, Field, Reason}}
   end.

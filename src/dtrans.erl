@@ -29,18 +29,17 @@
 
 -spec new(model()) ->
  {ok, dtrans_model:t()} | {error, Reason}
-  when Reason ::
-       dependency_tree_model_cannot_be_resolved
-    | {cyclic_dependency, Path :: [model_field_name()]}.
+  when Reason :: dependency_tree_model_cannot_be_resolved
+               | {cyclic_dependency, Path :: [model_field_name()]}.
 new(Model) ->
   dtrans_model:new(Model).
 
 -spec extract(data(), dtrans_model:t()) ->
   {ok, data()} | {error, Error}
-  when Error ::
-      {no_data,            dtrans:model_field_name()}
-    | {validation_error,   dtrans:model_field_name(), Reason :: term()}
-    | {construction_error, dtrans:model_field_name(), Reason :: term()}.
+  when Error          :: {no_data,        dtrans:model_field_name()}
+                       | {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
+       FieldErrorKind :: validation_error         | construction_error
+                       | validator_invalid_output | constructor_invalid_output.
 extract(Data, Model) ->
   dtrans_model:extract(Data, Model).
 

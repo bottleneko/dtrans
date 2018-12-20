@@ -2,31 +2,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--export([all/0]).
-
--export([cyclic_dependency_test/1]).
--export([required_dependency_of_not_required_field/1]).
-
--export([
-  layers_test/1,
-  extended_layers_test/1,
-  layers_in_disconnected_graph/1
-]).
-
--export([
-  simple_extract_data_test/1,
-  extract_data_with_constructor_test/1,
-  extract_data_with_validator_test/1,
-  extract_data_with_deps_test/1,
-  extract_required_field/1,
-  extract_default_value/1
-]).
-
--export([
-  required_field_not_present/1,
-  validator_throws_error/1,
-  constructor_throws_error/1
-  ]).
+-compile(export_all).
+-compile(nowarn_export_all).
 
 all() ->
   [
@@ -45,8 +22,11 @@ all() ->
     extract_default_value,
 
     required_field_not_present,
+    constructor_error,
     validator_throws_error,
-    constructor_throws_error
+    constructor_throws_error,
+    validator_invalid_output,
+    constructor_invalid_output
   ].
 
 %%====================================================================
@@ -56,13 +36,13 @@ all() ->
 cyclic_dependency_test(_Config) ->
   Model = #{
     field1 => #{
-      constructor => {depends_on, [field3], fun() -> true end}
+      constructor => {depends_on, [field3], fun(_, _) -> {ok, true} end}
     },
     field2 => #{
-      constructor => {depends_on, [field3], fun() -> true end}
+      constructor => {depends_on, [field3], fun(_, _) -> {ok, true} end}
     },
     field3 => #{
-      constructor => {depends_on, [field2], fun() -> true end}
+      constructor => {depends_on, [field2], fun(_, _) -> {ok, true} end}
     }
   },
   ?assertMatch({error, {cyclic_dependency, _}}, dtrans:new(Model)).
@@ -72,12 +52,12 @@ required_dependency_of_not_required_field(_Config) ->
     field1 => #{
       required      => false,
       default_value => 0,
-      constructor   => {depends_on, [], fun() -> true end}
+      constructor   => fun(_) -> {ok, true} end
     },
     field2 => #{
       required      => true,
       default_value => 0,
-      constructor   => {depends_on, [field1], fun(_) -> true end}
+      constructor   => {depends_on, [field1], fun(_, _) -> {ok, true} end}
     }
   },
   ?assertEqual({error, dependency_tree_model_cannot_be_resolved}, dtrans:new(RawModel)).
@@ -91,12 +71,12 @@ layers_test(_Config) ->
     field1 => #{
       required      => false,
       default_value => 0,
-      constructor   => {depends_on, [], fun(_) -> true end}
+      constructor   => fun(_) -> {ok, true} end
     },
     field2 => #{
       required      => false,
       default_value => 0,
-      constructor   => {depends_on, [field1], fun(_, _) -> true end}
+      constructor   => {depends_on, [field1], fun(_, _) -> {ok, true} end}
     }
   },
   {ok, Model} = dtrans:new(RawModel),
@@ -108,17 +88,17 @@ extended_layers_test(_Config) ->
     field1 => #{
       required      => false,
       default_value => 0,
-      constructor   => fun(_) -> true end
+      constructor   => fun(_) -> {ok, true} end
     },
     field2 => #{
       required      => false,
       default_value => 0,
-      constructor   => {depends_on, [field1], fun(_, _) -> true end}
+      constructor   => {depends_on, [field1], fun(_, _) -> {ok, true} end}
     },
     field3 => #{
       required      => false,
       default_value => 0,
-      constructor   => {depends_on, [field1], fun(_, _) -> true end}
+      constructor   => {depends_on, [field1], fun(_, _) -> {ok, true} end}
     }
   },
   {ok, Model} = dtrans:new(RawModel),
@@ -130,22 +110,22 @@ layers_in_disconnected_graph(_Config) ->
     field1 => #{
       required      => false,
       default_value => 0,
-      constructor   => fun(_) -> true end
+      constructor   => fun(_) -> {ok, true} end
     },
     field2 => #{
       required      => false,
       default_value => 0,
-      constructor   => {depends_on, [field1], fun(_) -> true end}
+      constructor   => {depends_on, [field1], fun(_) -> {ok, true} end}
     },
     field3 => #{
       required      => false,
       default_value => 0,
-      constructor   => {depends_on, [field1], fun(_, _) -> true end}
+      constructor   => {depends_on, [field1], fun(_, _) -> {ok, true} end}
     },
     field4 => #{
       required      => false,
       default_value => 0,
-      constructor   => fun(_) -> true end
+      constructor   => fun(_) -> {ok, true} end
     }
   },
   {ok, Model} = dtrans:new(RawModel),
@@ -171,7 +151,7 @@ extract_data_with_constructor_test(_config) ->
     field1 => #{
       required      => false,
       default_value => 0,
-      constructor   => fun(Value) -> Value + 1 end
+      constructor   => fun(Value) -> {ok, Value + 1} end
     }
   },
   {ok, Model} = dtrans:new(RawModel),
@@ -203,7 +183,7 @@ extract_data_with_deps_test(_Config) ->
     field2 => #{
       required      => false,
       default_value => 0,
-      constructor   => {depends_on, [field1], fun(Lhs, Rhs) -> Lhs + Rhs end}
+      constructor   => {depends_on, [field1], fun(Lhs, Rhs) -> {ok, Lhs + Rhs} end}
     }
   },
   {ok, Model} = dtrans:new(RawModel),
@@ -238,16 +218,27 @@ required_field_not_present(_Config) ->
     field1 => #{
       required      => true,
       default_value => 0,
-      constructor   => fun(_) -> 1 end
+      constructor   => fun(_) -> {ok, 1} end
     },
     field2 => #{
       required      => true,
       default_value => 0,
-      constructor   => {depends_on, [field1], fun(_, _) -> true end}
+      constructor   => {depends_on, [field1], fun(_, _) -> {ok, true} end}
     }
   },
   {ok, Model} = dtrans:new(RawModel),
   ?assertEqual({error, {no_data, field1}}, dtrans:extract(#{field2 => 1}, Model)).
+
+constructor_error(_Config) ->
+  RawModel = #{
+    field1 => #{
+      required      => false,
+      default_value => 0,
+      constructor   => fun(_) -> {error, test} end
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({error, {construction_error, field1, test}}, dtrans:extract(#{field1 => 1}, Model)).
 
 validator_throws_error(_Config) ->
   RawModel = #{
@@ -270,3 +261,25 @@ constructor_throws_error(_Config) ->
   },
   {ok, Model} = dtrans:new(RawModel),
   ?assertEqual({error, {construction_error, field1, test}}, dtrans:extract(#{field1 => 1}, Model)).
+
+validator_invalid_output(_Config) ->
+  RawModel = #{
+    field1 => #{
+      required      => false,
+      default_value => 0,
+      validator     => fun(_) -> invalid_output end
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({error, {validator_invalid_output, field1, invalid_output}}, dtrans:extract(#{field1 => 1}, Model)).
+
+constructor_invalid_output(_Config) ->
+  RawModel = #{
+    field1 => #{
+      required      => false,
+      default_value => 0,
+      constructor   => fun(_) -> invalid_output end
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({error, {constructor_invalid_output, field1, invalid_output}}, dtrans:extract(#{field1 => 1}, Model)).
