@@ -1,7 +1,8 @@
 -module(dtrans_model).
 
 -record(dtrans_model_record, {
-
+  model  :: #{dtrans:model_field_name() => dtrans_field:t()},
+  layers :: [[dtrans:model_field_name()]]
 }).
 
 -opaque t() :: #dtrans_model_record{}.
@@ -11,23 +12,52 @@
 %% API
 -export([new/1]).
 
+-export([extract/2]).
+
 %%====================================================================
 %% API functions
 %%====================================================================
 
--spec new(dtrans:model()) -> t().
+-spec new(dtrans:model()) ->
+ {ok, t()} | {error, Reason :: term()}.
 new(RawModel) ->
   case build_graph(RawModel) of
     {ok, Digraph} ->
       case check_required_dependencies(RawModel, Digraph) of
         true ->
-          build_dependency_layers(Digraph);
+          Fun =
+            fun(Key, Value) ->
+              dtrans_model_field:new(Key, Value)
+            end,
+          UpgradedModel = maps:map(Fun, RawModel),
+          {ok, #dtrans_model_record{
+            model  = UpgradedModel,
+            layers = build_dependency_layers(Digraph)
+          }};
         false ->
           {error, dependency_tree_model_cannot_be_resolved}
       end;
     {error, _Reason} = Error ->
       Error
   end.
+
+-spec extract(Data :: dtrans:model(), Model :: t()) ->
+  #{dtrans:model_field_name() => any()}.
+extract(Data, #dtrans_model_record{model = Model, layers = Layers} = _Model) ->
+  Fun =
+    fun
+      (Elem, {ok, Acc}) ->
+        case dtrans_model_field:extract(Data, Acc, maps:get(Elem, Model)) of
+          {ok, Value} ->
+            {ok, Acc#{Elem => Value}};
+          {error, _Reason} = Error ->
+            Error
+        end;
+      (_Elem, {error, _Reason} = Error) ->
+        Error
+    end,
+  %% FIXME: already must be flatten
+  lists:foldr(Fun, {ok, #{}}, lists:flatten(Layers)).
 
 %%====================================================================
 %% Internal functions
@@ -81,9 +111,9 @@ get_links(Model) ->
 
 -spec get_depended_fields(dtrans:field_model(any())) -> [dtrans:field_name()].
 get_depended_fields(FieldModel) ->
-  Constructor = maps:get(constructor, FieldModel),
+  Constructor = maps:get(constructor, FieldModel, undefined),
   case Constructor of
-    {depends_on, _Fun, Fields} ->
+    {depends_on, Fields, _Fun} ->
       Fields;
     _ -> []
   end.
