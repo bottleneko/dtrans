@@ -57,7 +57,7 @@ extract(Data, #dtrans_model_record{model = Model, layers = Layers} = _Model) ->
         Error
     end,
   %% FIXME: already must be flatten
-  lists:foldr(Fun, {ok, #{}}, lists:flatten(Layers)).
+  lists:foldl(Fun, {ok, #{}}, lists:flatten(Layers)).
 
 %%====================================================================
 %% Internal functions

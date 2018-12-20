@@ -18,7 +18,6 @@
 %% API
 -export([new/2]).
 
--export([is_required/1]).
 -export([extract/3]).
 
 %%====================================================================
@@ -36,10 +35,6 @@ new(FieldName, ModelField) ->
     constructor   = maps:get(constructor,   ModelField,  fun(Value) -> Value end)
   }.
 
--spec is_required(t()) -> boolean().
-is_required(#dtrans_model_field{required = Required} = _ModelField) ->
-  Required.
-
 -spec extract(Data, Base, t()) -> {ok, any()} | {error, no_data}
   when Base   :: Data,
        Data   :: #{dtrans:model_field_name() => dtrans:model_field()}.
@@ -48,7 +43,7 @@ extract(Data, Base, #dtrans_model_field{name = Field, required = true} = FieldMo
     #{Field := Value} ->
       do_extract(Value, Base, FieldModel);
     Data ->
-      {error, no_data}
+      {error, {no_data, Field}}
   end;
 extract(Data, Base, #dtrans_model_field{name = Field, default_value = Default} = FieldModel) ->
   case Data of
@@ -73,12 +68,14 @@ do_extract(Value, Base, FieldModel) ->
   -spec validate(Value :: any(), t()) ->
   ok | {error, Reason :: term()}.
 validate(Value, #dtrans_model_field{name = Field, validator = Validator}) ->
-  try
-    %% FIXME: check type before return, now possible invalid returns values without errors
-    Validator(Value)
+  %% FIXME: check type before return, now possible invalid returns values without errors
+  try Validator(Value) of
+    ok -> ok;
+    {error, Reason} ->
+      {error, {validation_error, Field, Reason}}
   catch
     _:Reason ->
-      {error, {validate_error, Field, Reason}}
+      {error, {validation_error, Field, Reason}}
   end.
 
 -spec construct(Value :: any(), Data, t()) ->
