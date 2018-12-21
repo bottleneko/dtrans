@@ -29,12 +29,15 @@ new(RawModel) ->
             fun(Key, Value) ->
               dtrans_model_field:new(Key, Value)
             end,
+          Layers = build_dependency_layers(Digraph),
+          digraph:delete(Digraph),
           UpgradedModel = maps:map(Fun, RawModel),
           {ok, #dtrans_model_record{
             model  = UpgradedModel,
-            layers = build_dependency_layers(Digraph)
+            layers = Layers
           }};
         false ->
+          digraph:delete(Digraph),
           {error, dependency_tree_model_cannot_be_resolved}
       end;
     {error, _Reason} = Error ->
@@ -73,7 +76,8 @@ build_graph(RawModel) ->
   Links = get_links(RawModel),
   case add_edges(Links, Digraph) of
     {error, {bad_edge, Path}} ->
-        {error, {cyclic_dependency, Path}};
+      digraph:delete(Digraph),
+      {error, {cyclic_dependency, Path}};
     _ ->
       {ok, Digraph}
   end.
