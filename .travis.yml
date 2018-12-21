@@ -1,12 +1,32 @@
 language: erlang
 otp_release:
-    - 21.2
-    - 21.1
-    - 20.2
-    - 20.1
-    - 19.3
-script:
-    - curl -O -L https://s3.amazonaws.com/rebar3/rebar3
-    - chmod +x rebar3
-    - ./rebar3 update
-    - "./rebar3 ct"
+  - 21.2
+
+before_script:
+  - curl -O -L https://s3.amazonaws.com/rebar3/rebar3
+  - chmod +x rebar3
+  - ./rebar3 update
+
+stages:
+  - build
+  - test
+  - cover
+
+matrix:
+  include:
+    - stage: build
+      otp_release:
+        - 21.1
+        - 20.2
+        - 20.1
+        - 19.3
+      script: ./rebar3 compile
+
+    - stage: test
+      script: ./rebar3 ct --cover
+
+    - stage: cover
+      script:
+        - ./rebar3 ct --cover
+        - ./rebar3 cover --verbose --min_coverage 90
+        - bash <(curl -s https://codecov.io/bash)
