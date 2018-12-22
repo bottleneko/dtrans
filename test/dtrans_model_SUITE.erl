@@ -21,6 +21,9 @@ all() ->
     extract_required_field,
     extract_not_required_field_with_default_value,
     extract_not_required_field_without_default_value,
+    extract_internal_field_value,
+    extract_internal_field_value_with_dependencies,
+    extract_internal_field_with_ignored_shadowing_field_in_data,
 
     required_field_not_present,
     constructor_error,
@@ -137,7 +140,7 @@ layers_in_disconnected_graph(_Config) ->
 %% Extraction
 %%====================================================================
 
-simple_extract_data_test(_config) ->
+simple_extract_data_test(_Config) ->
   RawModel = #{
     field1 => #{
       required      => false,
@@ -147,7 +150,7 @@ simple_extract_data_test(_config) ->
   {ok, Model} = dtrans:new(RawModel),
   ?assertEqual({ok, #{field1 => 1}}, dtrans:extract(#{field1 => 1}, Model)).
 
-extract_data_with_constructor_test(_config) ->
+extract_data_with_constructor_test(_Config) ->
   RawModel = #{
     field1 => #{
       required      => false,
@@ -158,7 +161,7 @@ extract_data_with_constructor_test(_config) ->
   {ok, Model} = dtrans:new(RawModel),
   ?assertEqual({ok, #{field1 => 2}}, dtrans:extract(#{field1 => 1}, Model)).
 
-extract_data_with_validator_test(_config) ->
+extract_data_with_validator_test(_Config) ->
   RawModel = #{
     field1 => #{
       required      => false,
@@ -192,13 +195,12 @@ extract_data_with_deps_test(_Config) ->
 
 extract_required_field(_Config) ->
   RawModel = #{
-    field1 => #{
-      required      => true,
-      default_value => 0
+    field => #{
+      required => true
     }
   },
   {ok, Model} = dtrans:new(RawModel),
-  ?assertEqual({ok, #{field1 => 1}}, dtrans:extract(#{field1 => 1}, Model)).
+  ?assertEqual({ok, #{field => 1}}, dtrans:extract(#{field => 1}, Model)).
 
 extract_not_required_field_with_default_value(_Config) ->
   RawModel = #{
@@ -218,6 +220,37 @@ extract_not_required_field_without_default_value(_Config) ->
   },
   {ok, Model} = dtrans:new(RawModel),
   ?assertEqual({ok, #{}}, dtrans:extract(#{}, Model)).
+
+extract_internal_field_value(_Config) ->
+  RawModel = #{
+    field => #{
+      internal    => true,
+      constructor => fun() -> {ok, 1} end
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({ok, #{field => 1}}, dtrans:extract(#{}, Model)).
+
+extract_internal_field_value_with_dependencies(_Config) ->
+  RawModel = #{
+    field1 => #{},
+    field2 => #{
+      internal    => true,
+      constructor => {depends_on, [field1], fun(Field1) -> {ok, Field1 + 1} end}
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({ok, #{field1 => 3, field2 => 4}}, dtrans:extract(#{field1 => 3}, Model)).
+
+extract_internal_field_with_ignored_shadowing_field_in_data(_Config) ->
+  RawModel = #{
+    field => #{
+      internal    => true,
+      constructor => fun() -> {ok, 1} end
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({ok, #{field => 1}}, dtrans:extract(#{field => 3}, Model)).
 
 %%====================================================================
 %% Extracting errors

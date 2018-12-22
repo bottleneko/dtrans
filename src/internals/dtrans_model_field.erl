@@ -3,6 +3,7 @@
 -record(dtrans_model_field, {
   name          :: dtrans:model_field_name(),
   required      :: boolean(),
+  internal      :: boolean(),
   validator     :: fun((FieldType) -> ok | {error, Reason :: term()}),
   default_value :: FieldType,
   constructor   ::
@@ -31,6 +32,7 @@ new(FieldName, ModelField) ->
   #dtrans_model_field{
     name          = FieldName,
     required      = maps:get(required,      ModelField,  false),
+    internal      = maps:get(internal,      ModelField,  false),
     validator     = maps:get(validator,     ModelField,  fun(_Value) -> ok end),
     default_value = maps:get(default_value, ModelField, ?DTRANS_VALUE_NOT_PRESENT),
     constructor   = maps:get(constructor,   ModelField,  fun(Value) -> {ok, Value} end)
@@ -42,6 +44,8 @@ new(FieldName, ModelField) ->
                        | validator_invalid_output | constructor_invalid_output,
        Error :: {no_data,         dtrans:model_field_name()}
               | {FieldErrorKind, dtrans:model_field_name(), Reason :: term()}.
+extract(_Data, Base, #dtrans_model_field{internal = true} = FieldModel) ->
+  construct(Base, FieldModel);
 extract(Data, Base, #dtrans_model_field{name = Field, required = true} = FieldModel) ->
   case Data of
     #{Field := Value} ->
@@ -97,19 +101,24 @@ validate(Value, #dtrans_model_field{name = Field, validator = Validator}) ->
       {error, {validation_error, Field, Reason}}
   end.
 
+-spec construct(dtrans:data(), t()) ->
+  {ok, ConstructedValue :: any()} | {error, Error}
+  when Error          :: {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
+       FieldErrorKind :: construction_error | constructor_invalid_output.
+construct(Base, #dtrans_model_field{internal = true} = ModelField) ->
+  construct(?DTRANS_VALUE_NOT_PRESENT, Base, ModelField#dtrans_model_field{
+    constructor = construct_fun(Base, ModelField)
+  }).
+
 -spec construct(Value :: any(), dtrans:data(), t()) ->
   {ok, ConstructedValue :: any()} | {error, Error}
   when Error          :: {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
        FieldErrorKind :: construction_error | constructor_invalid_output.
 construct(Value, Base, #dtrans_model_field{
-  constructor = {depends_on, DependencyFields, Constructor}
+  constructor = {depends_on, _DependencyFields, _Constructor}
 } = FieldModel) ->
-  Fun =
-    fun(ConstructorValue) ->
-      erlang:apply(Constructor, [ConstructorValue | lists:map(fun(Elem) -> maps:get(Elem, Base) end, DependencyFields)])
-    end,
   construct(Value, Base, FieldModel#dtrans_model_field{
-    constructor = Fun
+    constructor = construct_fun(Base, FieldModel)
   });
 construct(Value, _Base, #dtrans_model_field{name = Field, constructor = Constructor}) ->
   try
@@ -124,4 +133,27 @@ construct(Value, _Base, #dtrans_model_field{name = Field, constructor = Construc
       {error, {constructor_invalid_output, Field, Output}};
     _:Reason ->
       {error, {construction_error, Field, Reason}}
+  end.
+
+-spec construct_fun(Base :: dtrans:data(), t()) ->
+  fun(() -> Return) | fun((any()) -> Return)
+  when Return :: {ok, _Value}
+               | {error, Reason :: term()}.
+construct_fun(Base, #dtrans_model_field{
+  internal    = true,
+  constructor = {depends_on, DependencyFields, Constructor}} = _ModelField) ->
+  fun(_Stub) ->
+    erlang:apply(Constructor, lists:map(fun(Elem) -> maps:get(Elem, Base) end, DependencyFields))
+  end;
+construct_fun(_Base, #dtrans_model_field{
+  internal    = true,
+  constructor = Constructor} = _ModelField) ->
+  fun(_Stub) ->
+    erlang:apply(Constructor, [])
+  end;
+construct_fun(Base, #dtrans_model_field{
+  internal    = false,
+  constructor = {depends_on, DependencyFields, Constructor}} =  _ModelField) ->
+  fun(ConstructorValue) ->
+    erlang:apply(Constructor, [ConstructorValue | lists:map(fun(Elem) -> maps:get(Elem, Base) end, DependencyFields)])
   end.

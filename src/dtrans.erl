@@ -4,6 +4,7 @@
 
 -type model_field(FieldType) :: #{
   required      => boolean(),
+  internal      => boolean(),
   validator     => fun((FieldType) -> ok | {error, Reason :: term()}),
   default_value => FieldType,
   constructor   =>

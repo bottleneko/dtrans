@@ -89,7 +89,8 @@ check_required_dependencies(RawModel, Digraph) ->
   Sources = digraph:source_vertices(Digraph),
   FunAll =
     fun(Elem) ->
-      #{required := Required} = maps:get(Elem, RawModel),
+      RawFieldModel = maps:get(Elem, RawModel),
+      Required = maps:get(required, RawFieldModel, false),
       check_guarantee_of_existence_dependencies(Elem, Required, RawModel, Digraph)
     end,
   lists:all(FunAll, Sources).
@@ -157,7 +158,8 @@ check_guarantee_of_existence_dependencies(Field, RequiredFlag, RawModel, Digraph
   case RawModel of
     #{Field := #{required := false}} when RequiredFlag =:= true ->
       false;
-    #{Field := #{required := Required}} ->
+    #{Field := RawFieldModel} ->
+      Required = maps:get(required, RawFieldModel, false),
       Fields = digraph:out_neighbours(Digraph, Field),
       FunAll =
         fun(Elem) ->
