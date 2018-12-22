@@ -21,9 +21,10 @@
 -spec new(dtrans:model()) ->
  {ok, t()} | {error, Reason :: term()}.
 new(RawModel) ->
-  case build_graph(RawModel) of
+  PreparedModel = prepare_model(RawModel),
+  case build_graph(PreparedModel) of
     {ok, Digraph} ->
-      case check_required_dependencies(RawModel, Digraph) of
+      case check_required_dependencies(PreparedModel, Digraph) of
         true ->
           Fun =
             fun(Key, Value) ->
@@ -31,7 +32,7 @@ new(RawModel) ->
             end,
           Layers = build_dependency_layers(Digraph),
           digraph:delete(Digraph),
-          UpgradedModel = maps:map(Fun, RawModel),
+          UpgradedModel = maps:map(Fun, PreparedModel),
           {ok, #dtrans_model_record{
             model  = UpgradedModel,
             layers = Layers
@@ -89,8 +90,7 @@ check_required_dependencies(RawModel, Digraph) ->
   Sources = digraph:source_vertices(Digraph),
   FunAll =
     fun(Elem) ->
-      RawFieldModel = maps:get(Elem, RawModel),
-      Required = maps:get(required, RawFieldModel, false),
+      #{required := Required} = maps:get(Elem, RawModel),
       check_guarantee_of_existence_dependencies(Elem, Required, RawModel, Digraph)
     end,
   lists:all(FunAll, Sources).
@@ -158,8 +158,7 @@ check_guarantee_of_existence_dependencies(Field, RequiredFlag, RawModel, Digraph
   case RawModel of
     #{Field := #{required := false}} when RequiredFlag =:= true ->
       false;
-    #{Field := RawFieldModel} ->
-      Required = maps:get(required, RawFieldModel, false),
+    #{Field := #{required := Required}} ->
       Fields = digraph:out_neighbours(Digraph, Field),
       FunAll =
         fun(Elem) ->
@@ -168,6 +167,8 @@ check_guarantee_of_existence_dependencies(Field, RequiredFlag, RawModel, Digraph
       lists:all(FunAll, Fields)
   end.
 
+-spec build_dependency_layers([[dtrans:model_field_name()]], digraph:graph()) ->
+  [[dtrans:model_field_name()]].
 build_dependency_layers([] = _Acc, Digraph) ->
   Layer = digraph:source_vertices(Digraph),
   build_dependency_layers([Layer], Digraph);
@@ -181,3 +182,13 @@ build_dependency_layers([PreviousLayer | _Tail] = Acc, Digraph) ->
   LayerWithDups = lists:flatmap(Fun, PreviousLayer),
   Layer = sets:to_list(sets:from_list(LayerWithDups)),
   build_dependency_layers([Layer | Acc], Digraph).
+
+-spec prepare_model(dtrans:model()) ->
+  PreparedModel :: #{dtrans:model_field_name() => dtrans_field:t()}.
+prepare_model(RawModel) ->
+  Fun =
+    fun(K, V) ->
+      ModelField = dtrans_model_field:new(K,  V),
+      dtrans_model_field:to_map(ModelField)
+    end,
+  maps:map(Fun, RawModel).
