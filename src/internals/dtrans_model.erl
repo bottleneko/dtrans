@@ -51,6 +51,8 @@ extract(Data, #dtrans_model_record{model = Model, layers = Layers} = _Model) ->
     fun
       (Elem, {ok, Acc}) ->
         case dtrans_model_field:extract(Data, Acc, maps:get(Elem, Model)) of
+          ok ->
+            {ok, Acc};
           {ok, Value} ->
             {ok, Acc#{Elem => Value}};
           {error, _Reason} = Error ->

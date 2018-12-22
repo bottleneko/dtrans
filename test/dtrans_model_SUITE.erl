@@ -19,7 +19,8 @@ all() ->
     extract_data_with_validator_test,
     extract_data_with_deps_test,
     extract_required_field,
-    extract_default_value,
+    extract_not_required_field_with_default_value,
+    extract_not_required_field_without_default_value,
 
     required_field_not_present,
     constructor_error,
@@ -199,15 +200,24 @@ extract_required_field(_Config) ->
   {ok, Model} = dtrans:new(RawModel),
   ?assertEqual({ok, #{field1 => 1}}, dtrans:extract(#{field1 => 1}, Model)).
 
-extract_default_value(_Config) ->
+extract_not_required_field_with_default_value(_Config) ->
   RawModel = #{
-    field1 => #{
+    field => #{
       required      => false,
       default_value => 1
     }
   },
   {ok, Model} = dtrans:new(RawModel),
-  ?assertEqual({ok, #{field1 => 1}}, dtrans:extract(#{}, Model)).
+  ?assertEqual({ok, #{field => 1}}, dtrans:extract(#{}, Model)).
+
+extract_not_required_field_without_default_value(_Config) ->
+  RawModel = #{
+    field => #{
+      required => false
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({ok, #{}}, dtrans:extract(#{}, Model)).
 
 %%====================================================================
 %% Extracting errors

@@ -5,7 +5,7 @@
 -type model_field(FieldType) :: #{
   required      => boolean(),
   validator     => fun((FieldType) -> ok | {error, Reason :: term()}),
-  default_value := FieldType,
+  default_value => FieldType,
   constructor   =>
     fun((any()) -> FieldType)
     | {depends_on, [dtrans_model:field_name()], fun((...) -> FieldType)}

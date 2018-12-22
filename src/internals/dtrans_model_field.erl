@@ -19,6 +19,8 @@
 
 -export([extract/3]).
 
+-define(DTRANS_VALUE_NOT_PRESENT, '$NOT_PRESENT').
+
 %%====================================================================
 %% API functions
 %%====================================================================
@@ -30,12 +32,12 @@ new(FieldName, ModelField) ->
     name          = FieldName,
     required      = maps:get(required,      ModelField,  false),
     validator     = maps:get(validator,     ModelField,  fun(_Value) -> ok end),
-    default_value = maps:get(default_value, ModelField),
+    default_value = maps:get(default_value, ModelField, ?DTRANS_VALUE_NOT_PRESENT),
     constructor   = maps:get(constructor,   ModelField,  fun(Value) -> {ok, Value} end)
   }.
 
 -spec extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
-  {ok, any()} | {error, Error}
+  ok | {ok, any()} | {error, Error}
   when FieldErrorKind :: validation_error         | construction_error
                        | validator_invalid_output | constructor_invalid_output,
        Error :: {no_data,         dtrans:model_field_name()}
@@ -52,7 +54,12 @@ extract(Data, Base, #dtrans_model_field{name = Field, default_value = Default} =
     #{Field := Value} ->
       do_extract(Value, Base, FieldModel);
     Data ->
-      do_extract(Default, Base, FieldModel)
+      case Default of
+        ?DTRANS_VALUE_NOT_PRESENT ->
+          ok;
+        Default ->
+          do_extract(Default, Base, FieldModel)
+      end
   end.
 
 %%====================================================================
