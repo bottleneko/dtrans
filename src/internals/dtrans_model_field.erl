@@ -1,14 +1,17 @@
 -module(dtrans_model_field).
 
+-define(DTRANS_VALUE_NOT_PRESENT, '$NOT_PRESENT').
+
 -record(dtrans_model_field, {
   name          :: dtrans:model_field_name(),
   required      :: boolean(),
   internal      :: boolean(),
   validator     :: fun((FieldType) -> ok | {error, Reason :: term()}),
-  default_value :: FieldType,
+  default_value :: FieldType | ?DTRANS_VALUE_NOT_PRESENT,
   constructor   ::
     fun((any()) -> FieldType)
-    | {depends_on, [dtrans_model:field_name()], fun((...) -> FieldType)}
+    | {depends_on, [dtrans_model:field_name()], fun((...) -> FieldType)},
+  model         :: dtrans_model:t() | ?DTRANS_VALUE_NOT_PRESENT
 }).
 
 -type t() :: #dtrans_model_field{}.
@@ -21,8 +24,6 @@
 -export([to_map/1]).
 
 -export([extract/3]).
-
--define(DTRANS_VALUE_NOT_PRESENT, '$NOT_PRESENT').
 
 %%====================================================================
 %% API functions
@@ -37,7 +38,8 @@ new(FieldName, ModelField) ->
     internal      = maps:get(internal,      ModelField,  false),
     validator     = maps:get(validator,     ModelField,  fun(_Value) -> ok end),
     default_value = maps:get(default_value, ModelField, ?DTRANS_VALUE_NOT_PRESENT),
-    constructor   = maps:get(constructor,   ModelField,  fun(Value) -> {ok, Value} end)
+    constructor   = maps:get(constructor,   ModelField,  fun(Value) -> {ok, Value} end),
+    model         = maps:get(model, ModelField, ?DTRANS_VALUE_NOT_PRESENT)
   }.
 
 -spec to_map(t()) -> dtrans:model().
@@ -50,11 +52,25 @@ to_map(FieldModel) ->
 -spec extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
   ok | {ok, any()} | {error, Error}
   when FieldErrorKind :: validation_error         | construction_error
-                       | validator_invalid_output | constructor_invalid_output,
+                       | validator_invalid_output | constructor_invalid_output
+                       | error_in_inner_model,
        Error :: {no_data,         dtrans:model_field_name()}
               | {FieldErrorKind, dtrans:model_field_name(), Reason :: term()}.
 extract(_Data, Base, #dtrans_model_field{internal = true} = FieldModel) ->
   construct(Base, FieldModel);
+extract(Data, _Base, #dtrans_model_field{name = Field, model = Model} = _FieldModel)
+  when Model =/= ?DTRANS_VALUE_NOT_PRESENT ->
+  case Data of
+    #{Field := Value} ->
+      case dtrans:extract(Value, Model) of
+        {ok, _Value} = Success ->
+          Success;
+        {error, Reason} ->
+          {error, {error_in_inner_model, Field, Reason}}
+      end;
+    Data ->
+      ok
+  end;
 extract(Data, Base, #dtrans_model_field{name = Field, required = true} = FieldModel) ->
   case Data of
     #{Field := Value} ->

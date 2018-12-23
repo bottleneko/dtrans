@@ -58,8 +58,7 @@ while building in future this will be used in compile-time models
           default_value => 0
         },
       sum_of_a_and_b =>
-        #{
-          internal    => true,
+        #{internal    => true,
           required    => true,
           constructor => 
             {depends_on, 
@@ -151,7 +150,28 @@ Construction functions must be returns `{ok, Value :: any()}` or `{error, Reason
 {ok,#{field => 42}}
 ```
 
+### Model
+
+With `model` property you can inherit model in other model as field specification
+
+```erlang
+1> {ok, InnerModel} = dtrans:new(#{
+      inner_field => #{}
+    }).
+2> {ok, OuterModel} = dtrans:new(#{
+      outer_field => 
+        #{required => true,
+          model    => InnerModel
+         }
+    }).
+3> dtrans:extract(#{outer_field => #{inner_field => 4}}, OuterModel).
+{ok, #{outer_field => #{inner_field => 4}}}
+```
+
 # TODO
 
 * [ ] Add compile-time build for models where possible
 * [ ] Add more information to errors
+* [ ] Use other model as field spec
+    * [x] New model field property `model`
+    * [ ] New model field property set count of models 

@@ -9,7 +9,8 @@
   default_value => FieldType,
   constructor   =>
     fun((any()) -> FieldType)
-    | {depends_on, [dtrans_model:field_name()], fun((...) -> FieldType)}
+    | {depends_on, [dtrans_model:field_name()], fun((...) -> FieldType)},
+  model         => dtrans_model:t()
 }.
 
 -type model() :: #{model_field_name() => model_field(any())}.
@@ -40,7 +41,8 @@ new(Model) ->
   when Error          :: {no_data,        dtrans:model_field_name()}
                        | {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
        FieldErrorKind :: validation_error         | construction_error
-                       | validator_invalid_output | constructor_invalid_output.
+                       | validator_invalid_output | constructor_invalid_output
+                       | error_in_inner_model.
 extract(Data, Model) ->
   dtrans_model:extract(Data, Model).
 

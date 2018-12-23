@@ -1,4 +1,4 @@
--module(dtrans_model_SUITE).
+-module(dtrans_SUITE).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -24,6 +24,11 @@ all() ->
     extract_internal_field_value,
     extract_internal_field_value_with_dependencies,
     extract_internal_field_with_ignored_shadowing_field_in_data,
+    extract_field_with_model,
+    extract_optional_field_with_model,
+    extract_field_with_model_internal_field,
+    extract_field_with_model_error_data_not_present,
+    extract_field_with_model_validation_error,
 
     required_field_not_present,
     constructor_error,
@@ -251,6 +256,89 @@ extract_internal_field_with_ignored_shadowing_field_in_data(_Config) ->
   },
   {ok, Model} = dtrans:new(RawModel),
   ?assertEqual({ok, #{field => 1}}, dtrans:extract(#{field => 3}, Model)).
+
+extract_field_with_model(_Config) ->
+  RawInnerModel = #{
+    field => #{
+      internal    => true,
+      constructor => fun() -> {ok, 1} end
+    }
+  },
+  {ok, InnerModel} = dtrans:new(RawInnerModel),
+  RawOuterModel = #{
+    field => #{
+      required => true,
+      model    => InnerModel
+    }
+  },
+  {ok, OuterModel} = dtrans:new(RawOuterModel),
+  ?assertEqual({ok, #{field => #{field => 1}}}, dtrans:extract(#{field => #{}}, OuterModel)).
+
+extract_optional_field_with_model(_Config) ->
+  RawInnerModel = #{
+    inner_field => #{
+      internal    => true,
+      constructor => fun() -> {ok, 1} end
+    }
+  },
+  {ok, InnerModel} = dtrans:new(RawInnerModel),
+  RawOuterModel = #{
+    outer_field => #{
+      required => false,
+      model    => InnerModel
+    }
+  },
+  {ok, OuterModel} = dtrans:new(RawOuterModel),
+  ?assertEqual({ok, #{}}, dtrans:extract(#{}, OuterModel)).
+
+extract_field_with_model_internal_field(_Config) ->
+  RawInnerModel = #{
+    inner_field => #{}
+  },
+  {ok, InnerModel} = dtrans:new(RawInnerModel),
+  RawOuterModel = #{
+    outer_field => #{
+      required => true,
+      model    => InnerModel
+    }
+  },
+  {ok, OuterModel} = dtrans:new(RawOuterModel),
+  ?assertEqual({ok, #{outer_field => #{inner_field => 4}}},
+    dtrans:extract( #{outer_field => #{inner_field => 4}}, OuterModel)).
+
+extract_field_with_model_error_data_not_present(_Config) ->
+  RawInnerModel = #{
+    inner_field => #{
+      required => true
+    }
+  },
+  {ok, InnerModel} = dtrans:new(RawInnerModel),
+  RawOuterModel = #{
+    outer_field => #{
+      required => true,
+      model    => InnerModel
+    }
+  },
+  {ok, OuterModel} = dtrans:new(RawOuterModel),
+  ?assertEqual({error, {error_in_inner_model,outer_field,{no_data,inner_field}}}, dtrans:extract(#{outer_field => #{}}, OuterModel)).
+
+extract_field_with_model_validation_error(_Config) ->
+  RawInnerModel = #{
+    inner_field => #{
+      validator => fun(_Value) -> {error, "Some error"} end
+    }
+  },
+  {ok, InnerModel} = dtrans:new(RawInnerModel),
+  RawOuterModel = #{
+    outer_field => #{
+      model => InnerModel
+    }
+  },
+  {ok, OuterModel} = dtrans:new(RawOuterModel),
+  ?assertEqual({error,
+    {error_in_inner_model,outer_field,
+      {validation_error,inner_field,"Some error"}}},
+    dtrans:extract( #{outer_field => #{inner_field => 4}}, OuterModel)).
 
 %%====================================================================
 %% Extracting errors
