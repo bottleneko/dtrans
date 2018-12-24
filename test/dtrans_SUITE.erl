@@ -29,6 +29,10 @@ all() ->
     extract_field_with_model_internal_field,
     extract_field_with_model_error_data_not_present,
     extract_field_with_model_validation_error,
+    extract_one_field,
+    extract_many_fields,
+    extract_many_fields_default,
+    extract_many_fields_error,
 
     required_field_not_present,
     constructor_error,
@@ -339,6 +343,56 @@ extract_field_with_model_validation_error(_Config) ->
     {error_in_inner_model,outer_field,
       {validation_error,inner_field,"Some error"}}},
     dtrans:extract( #{outer_field => #{inner_field => 4}}, OuterModel)).
+
+extract_one_field(_Config) ->
+  RawModel = #{
+    field => #{
+      count       => one,
+      constructor => fun(Value) -> {ok, [1 | Value]} end
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({ok, #{field => [1, 2, 3, 4]}}, dtrans:extract(#{field => [2, 3, 4]}, Model)).
+
+extract_many_fields(_Config) ->
+  RawModel = #{
+    field => #{
+      count       => many,
+      constructor => fun(Value) -> {ok, Value + 1} end
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({ok, #{field => [2, 3, 4]}}, dtrans:extract(#{field => [1, 2, 3]}, Model)).
+
+extract_many_fields_error(_Config) ->
+  RawModel = #{
+    field => #{
+      count       => many,
+      constructor =>
+        fun
+          (1 = Value) -> {ok, Value + 1};
+          (_Value)    -> {error, only_1}
+        end
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual(
+    {error,
+      {{list_processing_error,3},
+        field,
+        {construction_error,field,only_1}}},
+    dtrans:extract(#{field => [1, 2, 3]}, Model)).
+
+extract_many_fields_default(_Config) ->
+  RawModel = #{
+    field => #{
+      count         => many,
+      constructor   => fun(Value) -> {ok, Value + 1} end,
+      default_value => [1, 2, 3]
+    }
+  },
+  {ok, Model} = dtrans:new(RawModel),
+  ?assertEqual({ok, #{field => [2, 3, 4]}}, dtrans:extract(#{}, Model)).
 
 %%====================================================================
 %% Extracting errors

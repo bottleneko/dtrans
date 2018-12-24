@@ -11,7 +11,8 @@
   constructor   ::
     fun((any()) -> FieldType)
     | {depends_on, [dtrans_model:field_name()], fun((...) -> FieldType)},
-  model         :: dtrans_model:t() | ?DTRANS_VALUE_NOT_PRESENT
+  model         :: dtrans_model:t() | ?DTRANS_VALUE_NOT_PRESENT,
+  count         :: one | many
 }).
 
 -type t() :: #dtrans_model_field{}.
@@ -34,12 +35,13 @@
 new(FieldName, ModelField) ->
   #dtrans_model_field{
     name          = FieldName,
-    required      = maps:get(required,      ModelField,  false),
-    internal      = maps:get(internal,      ModelField,  false),
-    validator     = maps:get(validator,     ModelField,  fun(_Value) -> ok end),
+    required      = maps:get(required,      ModelField, false),
+    internal      = maps:get(internal,      ModelField, false),
+    validator     = maps:get(validator,     ModelField, fun(_Value) -> ok end),
     default_value = maps:get(default_value, ModelField, ?DTRANS_VALUE_NOT_PRESENT),
-    constructor   = maps:get(constructor,   ModelField,  fun(Value) -> {ok, Value} end),
-    model         = maps:get(model, ModelField, ?DTRANS_VALUE_NOT_PRESENT)
+    constructor   = maps:get(constructor,   ModelField, fun(Value) -> {ok, Value} end),
+    model         = maps:get(model,         ModelField, ?DTRANS_VALUE_NOT_PRESENT),
+    count         = maps:get(count,         ModelField, one)
   }.
 
 -spec to_map(t()) -> dtrans:model().
@@ -49,45 +51,38 @@ to_map(FieldModel) ->
   Proplist = lists:zip(Keys, Value),
   maps:from_list(Proplist).
 
+-define(EUNIT_DEBUG_VAL_DEPTH, 1500).
+-include_lib("eunit/include/eunit.hrl").
+
 -spec extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
   ok | {ok, any()} | {error, Error}
   when FieldErrorKind :: validation_error         | construction_error
                        | validator_invalid_output | constructor_invalid_output
                        | error_in_inner_model,
-       Error :: {no_data,         dtrans:model_field_name()}
+       Error :: {no_data,        dtrans:model_field_name()}
               | {FieldErrorKind, dtrans:model_field_name(), Reason :: term()}.
 extract(_Data, Base, #dtrans_model_field{internal = true} = FieldModel) ->
   construct(Base, FieldModel);
-extract(Data, _Base, #dtrans_model_field{name = Field, model = Model} = _FieldModel)
-  when Model =/= ?DTRANS_VALUE_NOT_PRESENT ->
+extract(Data, Base, #dtrans_model_field{
+  name          = Field,
+  default_value = Default,
+  count         = Count,
+  required      = Required} = FieldModel) ->
   case Data of
-    #{Field := Value} ->
-      case dtrans:extract(Value, Model) of
-        {ok, _Value} = Success ->
-          Success;
-        {error, Reason} ->
-          {error, {error_in_inner_model, Field, Reason}}
-      end;
-    Data ->
-      ok
-  end;
-extract(Data, Base, #dtrans_model_field{name = Field, required = true} = FieldModel) ->
-  case Data of
-    #{Field := Value} ->
+    #{Field := Value} when Count =:= one ->
       do_extract(Value, Base, FieldModel);
-    Data ->
-      {error, {no_data, Field}}
-  end;
-extract(Data, Base, #dtrans_model_field{name = Field, default_value = Default} = FieldModel) ->
-  case Data of
-    #{Field := Value} ->
-      do_extract(Value, Base, FieldModel);
-    Data ->
+    #{Field := Values} when Count =:= many, is_list(Values) ->
+      do_extract_many(Values, Base, FieldModel);
+    Data when Required =:= true ->
+      {error, {no_data, Field}};
+    Data when Required =:= false ->
       case Default of
         ?DTRANS_VALUE_NOT_PRESENT ->
           ok;
-        Default ->
-          do_extract(Default, Base, FieldModel)
+        Default when Count =:= one ->
+          do_extract(Default, Base, FieldModel);
+        Defaults when Count =:= many ->
+          do_extract_many(Defaults, Base, FieldModel)
       end
   end.
 
@@ -95,17 +90,40 @@ extract(Data, Base, #dtrans_model_field{name = Field, default_value = Default} =
 %% Internal functions
 %%====================================================================
 
--spec do_extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
+do_extract_many(Values, Base, #dtrans_model_field{name = Field} = FieldModel) ->
+  Fun =
+    fun
+      (_Elem, {error, _Reason} = Error) ->
+        Error;
+      (Elem, {ok, Acc}) ->
+        case do_extract(Elem, Base, FieldModel) of
+          {ok, Value}     ->
+            {ok, [Value | Acc]};
+          {error, Reason} ->
+            {error, {{list_processing_error, Elem}, Field, Reason}}
+        end
+    end,
+  lists:foldr(Fun, {ok, []}, Values).
+
+-spec do_extract(Data :: dtrans:data(), Base :: dtrans:data() | dtrans:model_field_name(), t()) ->
   {ok, any()} | {error, Error}
   when Error          :: {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
        FieldErrorKind :: validation_error         | construction_error
                        | validator_invalid_output | constructor_invalid_output.
-do_extract(Value, Base, FieldModel) ->
+do_extract(Value, Base, #dtrans_model_field{model = Model} = FieldModel)
+  when Model =:= ?DTRANS_VALUE_NOT_PRESENT ->
   case validate(Value, FieldModel) of
     ok ->
       construct(Value, Base, FieldModel);
     {error, _Reason} = Error ->
       Error
+  end;
+do_extract(Value, _Base, #dtrans_model_field{name = Field, model = Model}) ->
+  case dtrans:extract(Value, Model) of
+    {ok, _Value} = Success ->
+      Success;
+    {error, Reason} ->
+      {error, {error_in_inner_model, Field, Reason}}
   end.
 
 -spec validate(Value :: any(), t()) ->

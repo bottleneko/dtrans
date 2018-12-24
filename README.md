@@ -41,6 +41,8 @@ from fields values throught tuple:
 {ok,#{timestamp => {1545,494367,679728}}}
 ```
 
+> Note: default value of this property is `false`
+
 ### Required
 
 Correctly set `required` field give the opportunity checks model 
@@ -79,6 +81,8 @@ And this field property using while data extracting
 2> dtrans:extract(#{}, Model).
 {error,{no_data,required_field}}
 ```
+
+> Note: default value of this property is `false`
     
 ### Validator
 
@@ -98,6 +102,8 @@ This function should be return `ok` or `{error, Reason :: any()}` values
 2> dtrans:extract(#{invalid_field => 43}, Model).
 {error,{validation_error,invalid_field,"Expected value is 42"}}
 ```
+
+> Note: default value of this property is constant `ok`
   
 ### Default value
 
@@ -150,6 +156,8 @@ Construction functions must be returns `{ok, Value :: any()}` or `{error, Reason
 {ok,#{field => 42}}
 ```
 
+> Note: default value of this property is identity function
+
 ### Model
 
 With `model` property you can inherit model in other model as field specification
@@ -168,10 +176,29 @@ With `model` property you can inherit model in other model as field specificatio
 {ok, #{outer_field => #{inner_field => 4}}}
 ```
 
+### Count
+
+While `count` property is set to `one` lists will be processing as one 
+object, while is set to `many` lists processiong as list of models and
+ validation/extraction will be called on each element
+ 
+ ```erlang
+1> {ok, Model} = dtrans:new(#{
+      field => 
+        #{count       => many,
+          constructor => fun(Value) -> {ok, Value + 1} end
+         }
+    })
+2> dtrans:extract(#{field => [1, 2, 3]}, Model).
+{ok,#{field => [2,3,4]}}
+```
+
+> Note: default value of this property is `one`
+
 # TODO
 
 * [ ] Add compile-time build for models where possible
 * [ ] Add more information to errors
-* [ ] Use other model as field spec
+* [x] Use other model as field spec
     * [x] New model field property `model`
-    * [ ] New model field property set count of models 
+    * [x] New model field property set count of models 
