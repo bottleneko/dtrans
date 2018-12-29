@@ -1,8 +1,9 @@
 -module(dtrans_model).
 
 -record(dtrans_model_record, {
-  model  :: #{dtrans:model_field_name() => dtrans_field:t()},
-  layers :: [[dtrans:model_field_name()]]
+  static_fields  :: #{dtrans:model_field_name() => dtrans_field:t()},
+  layers         :: [[dtrans:model_field_name()]],
+  dynamic_fields :: [dtrans:model_dynamic_field()]
 }).
 
 -opaque t() :: #dtrans_model_record{}.
@@ -26,16 +27,12 @@ new(RawModel) ->
     {ok, Digraph} ->
       case check_required_dependencies(PreparedModel, Digraph) of
         true ->
-          Fun =
-            fun(Key, Value) ->
-              dtrans_model_field:new(Key, Value)
-            end,
           Layers = build_dependency_layers(Digraph),
           digraph:delete(Digraph),
-          UpgradedModel = maps:map(Fun, PreparedModel),
           {ok, #dtrans_model_record{
-            model  = UpgradedModel,
-            layers = Layers
+            static_fields  = fetch_fields(fun(FieldKey) -> not is_function(FieldKey, 1) end, PreparedModel),
+            layers         = Layers,
+            dynamic_fields = fetch_fields(fun(FieldKey) -> is_function(FieldKey, 1) end, PreparedModel)
           }};
         false ->
           digraph:delete(Digraph),
@@ -47,7 +44,7 @@ new(RawModel) ->
 
 -spec extract(Data :: dtrans:data(), Model :: t()) ->
   {ok, dtrans:data()} | {error, Reason :: term()}.
-extract(Data, #dtrans_model_record{model = Model, layers = Layers} = _Model) ->
+extract(Data, #dtrans_model_record{static_fields = Model, layers = Layers} = _Model) ->
   Fun =
     fun
       (Elem, {ok, Acc}) ->
@@ -94,6 +91,23 @@ check_required_dependencies(RawModel, Digraph) ->
       check_guarantee_of_existence_dependencies(Elem, Required, RawModel, Digraph)
     end,
   lists:all(FunAll, Sources).
+
+-spec fetch_fields(Predicate, dtrans:model()) -> [dtrans:model()]
+  when Predicate :: fun((dtrans:model_field_key()) -> boolean()).
+fetch_fields(Predicate, PreparedModel) ->
+  Fun =
+    fun(K, _V) ->
+      Predicate(K)
+    end,
+  Fields = maps:filter(Fun, PreparedModel),
+  upgrade_model(Fields).
+
+upgrade_model(PreparedModel) ->
+  Fun =
+    fun(Key, Value) ->
+      dtrans_model_field:new(Key, Value)
+    end,
+  maps:map(Fun, PreparedModel).
 
 -spec build_dependency_layers(digraph:graph()) ->
   [[dtrans:model_field_name()]].

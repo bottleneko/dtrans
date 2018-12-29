@@ -308,7 +308,7 @@ extract_field_with_model_internal_field(_Config) ->
   },
   {ok, OuterModel} = dtrans:new(RawOuterModel),
   ?assertEqual({ok, #{outer_field => #{inner_field => 4}}},
-    dtrans:extract( #{outer_field => #{inner_field => 4}}, OuterModel)).
+    dtrans:extract(#{outer_field => #{inner_field => 4}}, OuterModel)).
 
 extract_field_with_model_error_data_not_present(_Config) ->
   RawInnerModel = #{
@@ -342,7 +342,7 @@ extract_field_with_model_validation_error(_Config) ->
   ?assertEqual({error,
     {error_in_inner_model,outer_field,
       {validation_error,inner_field,"Some error"}}},
-    dtrans:extract( #{outer_field => #{inner_field => 4}}, OuterModel)).
+    dtrans:extract(#{outer_field => #{inner_field => 4}}, OuterModel)).
 
 extract_one_field(_Config) ->
   RawModel = #{
