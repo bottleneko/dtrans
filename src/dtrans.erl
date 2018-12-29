@@ -1,6 +1,12 @@
 -module(dtrans).
 
--type model_field_name()  :: any().
+-type model_field_name()    :: any().
+-type model_dynamic_field() ::
+fun((model_field_name()) -> {ok, iolist()} | {error, wrong_dynamic_field_name}).
+
+-type model_field_key() :: model_field_name() | model_dynamic_field().
+
+-export_type([model_field_key/0, model_field_name/0, model_dynamic_field/0]).
 
 -type model_field(FieldType) :: #{
   required      => boolean(),
@@ -13,11 +19,13 @@
   model         => dtrans_model:t()
 }.
 
--type model() :: #{model_field_name() => model_field(any())}.
+-export_type([model_field/0]).
 
--export_type([model/0, model_field_name/0, model_field/1]).
+-type model() :: #{model_field_key() => model_field(any())}.
 
--type data() :: #{model_field_name() => any()}.
+-export_type([model/0]).
+
+-type data() :: #{model_field_key() => any()}.
 
 -export_type([data/0]).
 

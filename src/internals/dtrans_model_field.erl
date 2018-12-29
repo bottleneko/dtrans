@@ -3,7 +3,7 @@
 -define(DTRANS_VALUE_NOT_PRESENT, '$NOT_PRESENT').
 
 -record(dtrans_model_field, {
-  name          :: dtrans:model_field_name(),
+  field_key     :: dtrans:model_field_key(),
   required      :: boolean(),
   internal      :: boolean(),
   validator     :: fun((FieldType) -> ok | {error, Reason :: term()}),
@@ -31,10 +31,10 @@
 %%====================================================================
 
 %% TODO: add heuristic for accurate determine "required" flag value
--spec new(dtrans:model_field_name(), dtrans:model_field()) -> t().
-new(FieldName, ModelField) ->
+-spec new(dtrans:model_field_key(), dtrans:model_field()) -> t().
+new(FieldKey, ModelField) ->
   #dtrans_model_field{
-    name          = FieldName,
+    field_key     = FieldKey,
     required      = maps:get(required,      ModelField, false),
     internal      = maps:get(internal,      ModelField, false),
     validator     = maps:get(validator,     ModelField, fun(_Value) -> ok end),
@@ -61,17 +61,17 @@ to_map(FieldModel) ->
 extract(_Data, Base, #dtrans_model_field{internal = true} = FieldModel) ->
   construct(Base, FieldModel);
 extract(Data, Base, #dtrans_model_field{
-  name          = Field,
+  field_key     = FieldKey,
   default_value = Default,
   count         = Count,
   required      = Required} = FieldModel) ->
   case Data of
-    #{Field := Value} when Count =:= one ->
+    #{FieldKey := Value} when Count =:= one ->
       do_extract(Value, Base, FieldModel);
-    #{Field := Values} when Count =:= many, is_list(Values) ->
+    #{FieldKey := Values} when Count =:= many, is_list(Values) ->
       do_extract_many(Values, Base, FieldModel);
     Data when Required =:= true ->
-      {error, {no_data, Field}};
+      {error, {no_data, FieldKey}};
     Data when Required =:= false ->
       case Default of
         ?DTRANS_VALUE_NOT_PRESENT ->
@@ -87,7 +87,7 @@ extract(Data, Base, #dtrans_model_field{
 %% Internal functions
 %%====================================================================
 
-do_extract_many(Values, Base, #dtrans_model_field{name = Field} = FieldModel) ->
+do_extract_many(Values, Base, #dtrans_model_field{field_key = FieldKey} = FieldModel) ->
   Fun =
     fun
       (_Elem, {error, _Reason} = Error) ->
@@ -97,7 +97,7 @@ do_extract_many(Values, Base, #dtrans_model_field{name = Field} = FieldModel) ->
           {ok, Value}     ->
             {ok, [Value | Acc]};
           {error, Reason} ->
-            {error, {{list_processing_error, Elem}, Field, Reason}}
+            {error, {{list_processing_error, Elem}, FieldKey, Reason}}
         end
     end,
   lists:foldr(Fun, {ok, []}, Values).
@@ -115,30 +115,30 @@ do_extract(Value, Base, #dtrans_model_field{model = Model} = FieldModel)
     {error, _Reason} = Error ->
       Error
   end;
-do_extract(Value, _Base, #dtrans_model_field{name = Field, model = Model}) ->
+do_extract(Value, _Base, #dtrans_model_field{field_key = FieldKey, model = Model}) ->
   case dtrans:extract(Value, Model) of
     {ok, _Value} = Success ->
       Success;
     {error, Reason} ->
-      {error, {error_in_inner_model, Field, Reason}}
+      {error, {error_in_inner_model, FieldKey, Reason}}
   end.
 
 -spec validate(Value :: any(), t()) ->
   ok | {error, Error}
   when Error          :: {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
        FieldErrorKind :: validation_error | validator_invalid_output.
-validate(Value, #dtrans_model_field{name = Field, validator = Validator}) ->
+validate(Value, #dtrans_model_field{field_key = FieldKey, validator = Validator}) ->
   try
     case Validator(Value) of
       ok -> ok;
       {error, Error} ->
-        {error, {validation_error, Field, Error}}
+        {error, {validation_error, FieldKey, Error}}
     end
   catch
     _:{case_clause, Output} ->
-      {error, {validator_invalid_output, Field, Output}};
+      {error, {validator_invalid_output, FieldKey, Output}};
     _:Reason ->
-      {error, {validation_error, Field, Reason}}
+      {error, {validation_error, FieldKey, Reason}}
   end.
 
 -spec construct(dtrans:data(), t()) ->
@@ -152,19 +152,19 @@ construct(Base, #dtrans_model_field{internal = true} = ModelField) ->
   {ok, ConstructedValue :: any()} | {error, Error}
   when Error          :: {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
        FieldErrorKind :: construction_error | constructor_invalid_output.
-construct(Value, Base, #dtrans_model_field{name = Field} = ModelField) ->
+construct(Value, Base, #dtrans_model_field{field_key = FieldKey} = ModelField) ->
   try
     case (construct_fun(Base, ModelField))(Value) of
       {ok, _Value} = Success ->
         Success;
       {error, Error} ->
-        {error, {construction_error, Field, Error}}
+        {error, {construction_error, FieldKey, Error}}
     end
   catch
     _:{case_clause, Output} ->
-      {error, {constructor_invalid_output, Field, Output}};
+      {error, {constructor_invalid_output, FieldKey, Output}};
     _:Reason ->
-      {error, {construction_error, Field, Reason}}
+      {error, {construction_error, FieldKey, Reason}}
   end.
 
 -spec construct_fun(Base :: dtrans:data(), t()) ->
