@@ -51,9 +51,6 @@ to_map(FieldModel) ->
   Proplist = lists:zip(Keys, Value),
   maps:from_list(Proplist).
 
--define(EUNIT_DEBUG_VAL_DEPTH, 1500).
--include_lib("eunit/include/eunit.hrl").
-
 -spec extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
   ok | {ok, any()} | {error, Error}
   when FieldErrorKind :: validation_error         | construction_error
