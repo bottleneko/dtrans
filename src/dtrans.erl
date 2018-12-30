@@ -19,7 +19,7 @@ fun((model_field_name()) -> {ok, iolist()} | {error, wrong_dynamic_field_name}).
   model         => dtrans_model:t()
 }.
 
--export_type([model_field/0]).
+-export_type([model_field/1]).
 
 -type model() :: #{model_field_key() => model_field(any())}.
 

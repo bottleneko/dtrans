@@ -44,22 +44,15 @@ new(RawModel) ->
 
 -spec extract(Data :: dtrans:data(), Model :: t()) ->
   {ok, dtrans:data()} | {error, Reason :: term()}.
-extract(Data, #dtrans_model_record{static_fields = Model, layers = Layers} = _Model) ->
-  Fun =
-    fun
-      (Elem, {ok, Acc}) ->
-        case dtrans_model_field:extract(Data, Acc, maps:get(Elem, Model)) of
-          ok ->
-            {ok, Acc};
-          {ok, Value} ->
-            {ok, Acc#{Elem => Value}};
-          {error, _Reason} = Error ->
-            Error
-        end;
-      (_Elem, {error, _Reason} = Error) ->
-        Error
-    end,
-  lists:foldl(Fun, {ok, #{}}, lists:flatten(Layers)).
+extract(Data, #dtrans_model_record{layers = Layers} = Model) ->
+  case extract_static_fields(Data, Model) of
+    {ok, StaticFields} ->
+      DynamicData = maps:without(lists:flatten(Layers), Data),
+      DynamicFields = extract_dynamic_fields(DynamicData, Model),
+      {ok, maps:merge(DynamicFields, StaticFields)};
+    {error, _Reason} = Error ->
+      Error
+  end.
 
 %%====================================================================
 %% Internal functions
@@ -113,6 +106,43 @@ upgrade_model(PreparedModel) ->
   [[dtrans:model_field_name()]].
 build_dependency_layers(Digraph) ->
   build_dependency_layers([], Digraph).
+
+extract_static_fields(Data, #dtrans_model_record{static_fields = Model, layers = Layers} = _Model) ->
+  Fun =
+    fun
+      (Elem, {ok, Acc}) ->
+        case dtrans_model_field:extract(Data, Acc, maps:get(Elem, Model)) of
+          ok ->
+            {ok, Acc};
+          {ok, Value} ->
+            {ok, Acc#{Elem => Value}};
+          {error, _Reason} = Error ->
+            Error
+        end;
+      (_Elem, {error, _Reason} = Error) ->
+        Error
+    end,
+  lists:foldl(Fun, {ok, #{}}, lists:flatten(Layers)).
+
+extract_dynamic_fields(Data, #dtrans_model_record{dynamic_fields = DynamicFields} = _Model) ->
+  Proplist = maps:to_list(DynamicFields),
+  Fold =
+    fun(K, V, Acc) ->
+      FilterMap =
+        fun({FieldKey, _ModelField}) ->
+          case FieldKey(K) of
+            {ok, Value} ->
+              {true, Value};
+            _Error ->
+              false
+          end
+        end,
+      case lists:filtermap(FilterMap, Proplist) of
+        [NewK] -> Acc#{NewK => V};
+        _      -> Acc
+      end
+    end,
+  maps:fold(Fold, #{}, Data).
 
 %%====================================================================
 %% Helpers
@@ -185,7 +215,8 @@ check_guarantee_of_existence_dependencies(Field, RequiredFlag, RawModel, Digraph
   [[dtrans:model_field_name()]].
 build_dependency_layers([] = _Acc, Digraph) ->
   Layer = digraph:source_vertices(Digraph),
-  build_dependency_layers([Layer], Digraph);
+  StaticLayer = lists:filter(fun(FieldKey) -> not is_function(FieldKey, 1) end, Layer),
+  build_dependency_layers([StaticLayer], Digraph);
 build_dependency_layers([[] | Tail] = _Acc, _Digraph) ->
   Tail;
 build_dependency_layers([PreviousLayer | _Tail] = Acc, Digraph) ->

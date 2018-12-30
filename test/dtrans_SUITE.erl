@@ -33,6 +33,7 @@ all() ->
     extract_many_fields,
     extract_many_fields_default,
     extract_many_fields_error,
+    extract_dynamic_field,
 
     required_field_not_present,
     constructor_error,
@@ -393,6 +394,25 @@ extract_many_fields_default(_Config) ->
   },
   {ok, Model} = dtrans:new(RawModel),
   ?assertEqual({ok, #{field => [2, 3, 4]}}, dtrans:extract(#{}, Model)).
+
+extract_dynamic_field(_Config) ->
+  DynamicFieldKey =
+    fun(Value) ->
+      Binary = iolist_to_binary(Value),
+      case Binary of
+        <<"test_", _/binary>> ->
+          {ok, Binary};
+        _ ->
+          {error, wrong_dynamic_field_name}
+      end
+    end,
+  DynamicModel = #{
+    DynamicFieldKey => #{}
+  },
+  {ok, Model} = dtrans:new(DynamicModel),
+  ?assertEqual({ok, #{<<"test_field">> => 1}},
+    dtrans:extract(#{"test_field" => 1, "non_test_field" => 2}, Model)).
+
 
 %%====================================================================
 %% Extracting errors
