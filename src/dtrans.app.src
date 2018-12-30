@@ -9,7 +9,7 @@
   {env,[]},
   {modules, []},
 
-  {maintainers, []},
+  {maintainers, ["Boris Murashov"]},
   {licenses, ["MIT"]},
-  {links, []}
- ]}.
+  {links, [{"Github", "https://github.com/bottleneko/dtrans"}]}
+]}.
