@@ -19,12 +19,33 @@
 
 -export_type([t/0]).
 
+-type dtrans_model_field_extracting_error_no_data() :: {no_data, dtrans:model_field_name()}.
+
+-type dtrans_model_field_extracting_error_kind() ::
+     validation_error         | construction_error
+   | validator_invalid_output | constructor_invalid_output
+   | error_in_inner_model.
+
+-type dtrans_model_field_extracting_error_invalid_data() ::
+  {dtrans_model_field_extracting_error_kind(), dtrans:model_field_name(), Reason :: term()}.
+
+-type dtrans_model_field_extracting_error() ::
+    dtrans_model_field_extracting_error_no_data()
+  | dtrans_model_field_extracting_error_invalid_data().
+
+-export_type([
+  dtrans_model_field_extracting_error/0,
+  dtrans_model_field_extracting_error_no_data/0,
+  dtrans_model_field_extracting_error_invalid_data/0,
+  dtrans_model_field_extracting_error_kind/0
+]).
+
 %% API
 -export([new/2]).
 
 -export([to_map/1]).
 
--export([extract/3]).
+-export([extract_dynamic/3, extract/3]).
 
 %%====================================================================
 %% API functions
@@ -51,13 +72,13 @@ to_map(FieldModel) ->
   Proplist = lists:zip(Keys, Value),
   maps:from_list(Proplist).
 
+-spec extract_dynamic(Data :: dtrans:data(), Field :: dtrans:model_field_name(), t()) ->
+  ok | {ok, any()} | {error, dtrans_model_field_extracting_error()}.
+extract_dynamic(Data, Field, ModelField) ->
+  extract(Data, #{}, ModelField#dtrans_model_field{field_key = Field}).
+
 -spec extract(Data :: dtrans:data(), Base :: dtrans:data(), t()) ->
-  ok | {ok, any()} | {error, Error}
-  when FieldErrorKind :: validation_error         | construction_error
-                       | validator_invalid_output | constructor_invalid_output
-                       | error_in_inner_model,
-       Error :: {no_data,        dtrans:model_field_name()}
-              | {FieldErrorKind, dtrans:model_field_name(), Reason :: term()}.
+  ok | {ok, any()} | {error, dtrans_model_field_extracting_error()}.
 extract(_Data, Base, #dtrans_model_field{internal = true} = FieldModel) ->
   construct(Base, FieldModel);
 extract(Data, Base, #dtrans_model_field{
@@ -87,6 +108,13 @@ extract(Data, Base, #dtrans_model_field{
 %% Internal functions
 %%====================================================================
 
+-spec do_extract_many([dtrans:data()], Base :: dtrans:data(), t()) ->
+    {ok, [any()]}
+  | {error, {
+      {list_processing_error, dtrans:data()},
+      dtrans:model_field_key(),
+      Reason :: dtrans_model_field_extracting_error_invalid_data()
+    }}.
 do_extract_many(Values, Base, #dtrans_model_field{field_key = FieldKey} = FieldModel) ->
   Fun =
     fun
@@ -103,10 +131,7 @@ do_extract_many(Values, Base, #dtrans_model_field{field_key = FieldKey} = FieldM
   lists:foldr(Fun, {ok, []}, Values).
 
 -spec do_extract(Data :: dtrans:data(), Base :: dtrans:data() | dtrans:model_field_name(), t()) ->
-  {ok, any()} | {error, Error}
-  when Error          :: {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
-       FieldErrorKind :: validation_error         | construction_error
-                       | validator_invalid_output | constructor_invalid_output.
+  {ok, any()} | {error, dtrans_model_field_extracting_error_invalid_data()}.
 do_extract(Value, Base, #dtrans_model_field{model = Model} = FieldModel)
   when Model =:= ?DTRANS_VALUE_NOT_PRESENT ->
   case validate(Value, FieldModel) of

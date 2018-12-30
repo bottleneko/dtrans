@@ -45,12 +45,7 @@ new(Model) ->
   dtrans_model:new(Model).
 
 -spec extract(data(), dtrans_model:t()) ->
-  {ok, data()} | {error, Error}
-  when Error          :: {no_data,        dtrans:model_field_name()}
-                       | {FieldErrorKind, dtrans:model_field_name(), Reason :: term()},
-       FieldErrorKind :: validation_error         | construction_error
-                       | validator_invalid_output | constructor_invalid_output
-                       | error_in_inner_model.
+  {ok, data()} | {error, dtrans_model_field:dtrans_model_field_extracting_error()}.
 extract(Data, Model) ->
   dtrans_model:extract(Data, Model).
 

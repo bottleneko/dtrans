@@ -127,21 +127,28 @@ extract_static_fields(Data, #dtrans_model_record{static_fields = Model, layers =
 extract_dynamic_fields(Data, #dtrans_model_record{dynamic_fields = DynamicFields} = _Model) ->
   Proplist = maps:to_list(DynamicFields),
   Fold =
-    fun(K, V, Acc) ->
+    fun(K, _V, Acc) ->
       FilterMap =
-        fun({FieldKey, _ModelField}) ->
+        fun({FieldKey, ModelField}) ->
           case FieldKey(K) of
             {ok, Value} ->
-              {true, Value};
+              {true, {K, Value, ModelField}};
             _Error ->
               false
           end
         end,
       case lists:filtermap(FilterMap, Proplist) of
-        [NewK] -> Acc#{NewK => V};
-        _      -> Acc
-      end
-    end,
+        [{FieldRawName, FieldName, FieldModel} | _Tail] ->
+          case dtrans_model_field:extract_dynamic(Data, FieldRawName, FieldModel) of
+            {ok, Extracted} ->
+              Acc#{FieldName => Extracted};
+            _ ->
+              Acc
+          end;
+        [] ->
+          Acc
+    end
+  end,
   maps:fold(Fold, #{}, Data).
 
 %%====================================================================
